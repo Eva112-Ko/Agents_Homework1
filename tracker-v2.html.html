@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Мини-трекер учебных задач на неделю</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.4;
+    color: #1f2328;
+    background: #f4f5f7;
+  }
+
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 16px;
+  }
+
+  h1 { font-size: 1.4rem; margin: 0 0 12px; }
+  h2 { font-size: 1.1rem; margin: 0 0 8px; }
+
+  section {
+    background: #fff;
+    border: 1px solid #d0d7de;
+    border-radius: 8px;
+    padding: 12px;
+    margin-bottom: 12px;
+  }
+
+  .field { margin-bottom: 10px; }
+
+  .field > label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  input[type="text"],
+  input[type="number"] {
+    width: 100%;
+    font: inherit;
+    padding: 8px;
+    border: 1px solid #8c959f;
+    border-radius: 6px;
+  }
+
+  input[aria-invalid="true"] {
+    border-color: #b00020;
+    background: #fff5f5;
+  }
+
+  .error {
+    color: #b00020;
+    font-size: 0.9rem;
+    margin: 4px 0 0;
+  }
+
+  button {
+    font: inherit;
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: 1px solid #1f6feb;
+    background: #1f6feb;
+    color: #fff;
+    cursor: pointer;
+  }
+
+  button.delete {
+    background: #fff;
+    color: #b00020;
+    border-color: #b00020;
+    padding: 6px 10px;
+  }
+
+  fieldset {
+    border: 0;
+    margin: 0 0 8px;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 16px;
+  }
+
+  legend { font-weight: 600; padding: 0; margin-bottom: 4px; }
+
+  .radio { display: flex; align-items: center; gap: 6px; }
+
+  .tasks { list-style: none; margin: 0; padding: 0; }
+
+  .task {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 0;
+    border-bottom: 1px solid #eaeef2;
+  }
+
+  .task .check {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1 1 160px;
+    min-width: 0;
+  }
+
+  .task .check input { width: 20px; height: 20px; flex: 0 0 auto; }
+
+  .task .title { min-width: 0; overflow-wrap: anywhere; }
+
+  .task.done .title { text-decoration: line-through; color: #57606a; }
+
+  .task .hours { white-space: nowrap; }
+
+  .empty { color: #57606a; margin: 8px 0 0; }
+
+  .totals p { margin: 0 0 6px; }
+
+  progress { width: 100%; height: 14px; }
+
+  .notice {
+    background: #fff8c5;
+    border: 1px solid #d4a72c;
+    border-radius: 8px;
+    padding: 8px 12px;
+    margin: 0 0 12px;
+  }
+
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>Учебные задачи на неделю</h1>
+
+  <p id="storage-notice" class="notice" role="status" hidden></p>
+
+  <section class="totals" aria-labelledby="totals-heading">
+    <h2 id="totals-heading">Итоги</h2>
+    <p aria-live="polite">
+      Всего: <strong id="total-hours">0</strong> ч ·
+      Выполнено: <strong id="done-hours">0</strong> ч ·
+      Прогресс: <strong id="progress-value">0</strong>%
+    </p>
+    <progress id="progress-bar" max="100" value="0" aria-label="Прогресс выполнения"></progress>
+  </section>
+
+  <section aria-labelledby="form-heading">
+    <h2 id="form-heading">Новая задача</h2>
+    <form id="task-form" novalidate>
+      <div class="field">
+        <label for="title-input">Название</label>
+        <input id="title-input" name="title" type="text" autocomplete="off"
+               aria-describedby="title-error">
+        <p id="title-error" class="error" hidden></p>
+      </div>
+      <div class="field">
+        <label for="hours-input">Часы (от 0,5 до 24, шаг 0,5)</label>
+        <input id="hours-input" name="hours" type="number" inputmode="decimal"
+               min="0.5" max="24" step="0.5" aria-describedby="hours-error">
+        <p id="hours-error" class="error" hidden></p>
+      </div>
+      <button type="submit">Добавить</button>
+    </form>
+  </section>
+
+  <section aria-labelledby="list-heading">
+    <h2 id="list-heading">Список задач</h2>
+    <fieldset id="filter">
+      <legend>Фильтр</legend>
+      <label class="radio"><input type="radio" name="filter" value="all" checked> Все</label>
+      <label class="radio"><input type="radio" name="filter" value="active"> Активные</label>
+    </fieldset>
+    <ul id="task-list" class="tasks"></ul>
+    <p id="empty-message" class="empty" hidden></p>
+  </section>
+</main>
+
+<script>
+  // ===== ДОМЕННАЯ ЛОГИКА (чистые функции, без DOM и localStorage) =====
+
+  const HOURS_ERROR = "Часы — число от 0,5 до 24 с шагом 0,5";
+
+  function createInitialTasks() {
+    return [
+      { id: 1, title: "Чтение", hours: 2, done: true },
+      { id: 2, title: "Практика", hours: 4, done: false },
+      { id: 3, title: "Повторение", hours: 2, done: false }
+    ];
+  }
+
+  function isValidHours(n) {
+    return Number.isFinite(n) && n >= 0.5 && n <= 24 && Number.isInteger(n * 2);
+  }
+
+  function validateTaskInput(titleRaw, hoursRaw) {
+    const errors = {};
+
+    const title = String(titleRaw ?? "").trim();
+    if (title === "") {
+      errors.title = "Введите название";
+    }
+
+    const hoursText = String(hoursRaw ?? "").trim();
+    let hours = NaN;
+    if (hoursText === "") {
+      // Пустое значение — отдельная ошибка, НЕ ноль (Number("") дал бы 0)
+      errors.hours = "Укажите часы";
+    } else {
+      hours = Number(hoursText.replace(",", "."));
+      if (!isValidHours(hours)) {
+        errors.hours = HOURS_ERROR;
+      }
+    }
+
+    if (errors.title || errors.hours) {
+      return { ok: false, errors: errors };
+    }
+    return { ok: true, value: { title: title, hours: hours } };
+  }
+
+  function addTask(tasks, value) {
+    let maxId = 0;
+    for (const t of tasks) {
+      if (t.id > maxId) maxId = t.id;
+    }
+    const newTask = { id: maxId + 1, title: value.title, hours: value.hours, done: false };
+    return [...tasks, newTask];
+  }
+
+  function removeTask(tasks, id) {
+    return tasks.filter(t => t.id !== id);
+  }
+
+  function toggleTask(tasks, id) {
+    return tasks.map(t => (t.id === id ? { ...t, done: !t.done } : t));
+  }
+
+  function filterTasks(tasks, filter) {
+    if (filter === "active") {
+      return tasks.filter(t => !t.done);
+    }
+    return tasks;
+  }
+
+  function computeTotals(tasks) {
+    let totalHours = 0;
+    let doneHours = 0;
+    for (const t of tasks) {
+      totalHours += t.hours;
+      if (t.done) doneHours += t.hours;
+    }
+    const progress = totalHours > 0 ? Math.round(100 * doneHours / totalHours) : 0;
+    return { totalHours: totalHours, doneHours: doneHours, progress: progress };
+  }
+
+  function isValidTaskList(data) {
+    if (!Array.isArray(data)) return false;
+    const ids = new Set();
+    for (const t of data) {
+      if (t === null || typeof t !== "object") return false;
+      if (!Number.isInteger(t.id) || ids.has(t.id)) return false;
+      if (typeof t.title !== "string" || t.title.trim() === "" || t.title !== t.title.trim()) return false;
+      if (typeof t.hours !== "number" || !isValidHours(t.hours)) return false;
+      if (typeof t.done !== "boolean") return false;
+      ids.add(t.id);
+    }
+    return true;
+  }
+
+  // ===== КОНЕЦ ДОМЕННОЙ ЛОГИКИ =====
+
+
+  // ===== ХРАНИЛИЩЕ (необязательное улучшение) =====
+
+  const STORAGE_KEY = "tracker-v2.tasks";
+  const MSG_UNAVAILABLE = "Сохранение недоступно: изменения будут потеряны после закрытия страницы";
+  const MSG_CORRUPTED = "Сохранённые данные не удалось прочитать — загружен стартовый пример";
+
+  let storageAvailable = true;
+
+  function showNotice(text) {
+    const notice = document.getElementById("storage-notice");
+    notice.textContent = text;
+    notice.hidden = false;
+  }
+
+  function loadTasks() {
+    let raw;
+    try {
+      raw = window.localStorage.getItem(STORAGE_KEY);
+    } catch (e) {
+      storageAvailable = false;
+      showNotice(MSG_UNAVAILABLE);
+      return createInitialTasks();
+    }
+
+    if (raw === null) {
+      return createInitialTasks();
+    }
+
+    try {
+      const data = JSON.parse(raw);
+      if (isValidTaskList(data)) {
+        return data;
+      }
+    } catch (e) {
+      // ниже — общий ответ на повреждённые данные
+    }
+    showNotice(MSG_CORRUPTED);
+    return createInitialTasks();
+  }
+
+  function saveTasks(tasks) {
+    if (!storageAvailable) return;
+    try {
+      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+    } catch (e) {
+      storageAvailable = false;
+      showNotice(MSG_UNAVAILABLE);
+    }
+  }
+
+
+  // ===== ИНТЕРФЕЙС =====
+
+  const form = document.getElementById("task-form");
+  const titleInput = document.getElementById("title-input");
+  const hoursInput = document.getElementById("hours-input");
+  const titleError = document.getElementById("title-error");
+  const hoursError = document.getElementById("hours-error");
+  const filterBox = document.getElementById("filter");
+  const list = document.getElementById("task-list");
+  const emptyMessage = document.getElementById("empty-message");
+
+  let state = { tasks: loadTasks(), filter: "all" };
+
+  function formatHours(n) {
+    return n.toLocaleString("ru-RU");
+  }
+
+  function setFieldError(input, errorEl, message) {
+    if (message) {
+      errorEl.textContent = message;
+      errorEl.hidden = false;
+      input.setAttribute("aria-invalid", "true");
+    } else {
+      errorEl.textContent = "";
+      errorEl.hidden = true;
+      input.removeAttribute("aria-invalid");
+    }
+  }
+
+  function createTaskItem(task) {
+    const li = document.createElement("li");
+    li.className = task.done ? "task done" : "task";
+
+    const label = document.createElement("label");
+    label.className = "check";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.checked = task.done;
+    checkbox.dataset.id = String(task.id);
+
+    const hiddenPrefix = document.createElement("span");
+    hiddenPrefix.className = "visually-hidden";
+    hiddenPrefix.textContent = "Готово: ";
+
+    const title = document.createElement("span");
+    title.className = "title";
+    title.textContent = task.title;
+
+    label.append(checkbox, hiddenPrefix, title);
+
+    const hours = document.createElement("span");
+    hours.className = "hours";
+    hours.textContent = formatHours(task.hours) + " ч";
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "delete";
+    del.textContent = "Удалить";
+    del.dataset.id = String(task.id);
+    del.setAttribute("aria-label", "Удалить: " + task.title);
+
+    li.append(label, hours, del);
+    return li;
+  }
+
+  function render() {
+    const visible = filterTasks(state.tasks, state.filter);
+
+    list.replaceChildren(...visible.map(createTaskItem));
+
+    if (visible.length === 0) {
+      emptyMessage.textContent = state.tasks.length === 0 ? "Задач нет" : "Нет активных задач";
+      emptyMessage.hidden = false;
+    } else {
+      emptyMessage.hidden = true;
+    }
+
+    // Итоги — всегда по ВСЕМ задачам, а не по видимым
+    const totals = computeTotals(state.tasks);
+    document.getElementById("total-hours").textContent = formatHours(totals.totalHours);
+    document.getElementById("done-hours").textContent = formatHours(totals.doneHours);
+    document.getElementById("progress-value").textContent = String(totals.progress);
+    document.getElementById("progress-bar").value = totals.progress;
+  }
+
+  function updateTasks(newTasks) {
+    state.tasks = newTasks;
+    saveTasks(state.tasks);
+    render();
+  }
+
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+
+    // Если в поле type="number" введено не число, браузер отдаёт value = "".
+    // Чтобы это не выглядело как «пусто», передаём заведомо нечисловую строку.
+    const hoursRaw = hoursInput.validity.badInput ? "не число" : hoursInput.value;
+
+    const result = validateTaskInput(titleInput.value, hoursRaw);
+    const errors = result.ok ? {} : result.errors;
+    setFieldError(titleInput, titleError, errors.title);
+    setFieldError(hoursInput, hoursError, errors.hours);
+
+    if (!result.ok) {
+      // Данные формы НЕ очищаем
+      (errors.title ? titleInput : hoursInput).focus();
+      return;
+    }
+
+    updateTasks(addTask(state.tasks, result.value));
+    form.reset();
+    titleInput.focus();
+  });
+
+  list.addEventListener("change", function (event) {
+    if (event.target.type === "checkbox") {
+      updateTasks(toggleTask(state.tasks, Number(event.target.dataset.id)));
+    }
+  });
+
+  list.addEventListener("click", function (event) {
+    const button = event.target.closest("button.delete");
+    if (button) {
+      updateTasks(removeTask(state.tasks, Number(button.dataset.id)));
+    }
+  });
+
+  filterBox.addEventListener("change", function (event) {
+    if (event.target.name === "filter") {
+      state.filter = event.target.value;
+      render();
+    }
+  });
+
+  render();
+</script>
+</body>
+</html>
